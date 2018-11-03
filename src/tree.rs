@@ -56,6 +56,10 @@ impl<'a> SearchItem<'a> {
         p.push(&self.0.value().name);
         p
     }
+
+    pub fn name(&self) -> String {
+        self.0.value().name.clone()
+    }
 }
 
 pub struct SearchResult<'a> {
