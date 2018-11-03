@@ -25,6 +25,7 @@ mod tree;
 pub struct Options {
     include_files: bool,
     watch_changes: bool,
+    follow_symlinks: bool
 }
 
 impl Default for Options {
@@ -32,6 +33,7 @@ impl Default for Options {
         Options {
             include_files: true,
             watch_changes: false,
+            follow_symlinks: false
         }
     }
 }

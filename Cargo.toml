@@ -8,9 +8,17 @@ edition = "2018"
 ego-tree="0.5"
 bit-vec = "0.5"
 notify = "4.0"
-log = "0.4"
 derive_builder = "0.7"
+
+
+[dependencies.log]
+version = "0.4"
+features=[ "max_level_trace", "release_max_level_warn"]
 
 
 [dev-dependencies]
 env_logger = "0.5"
+
+[features]
+default=["symlinks"]
+symlinks=[]

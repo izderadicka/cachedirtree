@@ -6,6 +6,7 @@ use std::io;
 use std::iter::{FromIterator, IntoIterator, Iterator, Skip};
 use std::path::{Path, PathBuf};
 use super::{Options};
+use super::utils::get_real_file_type;
 
 
 pub struct DirTree {
@@ -69,12 +70,6 @@ impl<'a> Iterator for SearchResult<'a> {
     type Item = SearchItem<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            trace!(
-                "Before step {:?} searching {:?} already found {:?}",
-                self.current_node.value(),
-                self.search_terms,
-                self.new_matched_terms
-            );
             if let Some(next) = if self.truncate_this_branch {
                 None
             } else {
@@ -87,18 +82,21 @@ impl<'a> Iterator for SearchResult<'a> {
                         .matched_terms_stack
                         .push(self.matched_terms_stack.last().unwrap().clone()),
                 }
-                trace!("Going down - push {:?}", self.new_matched_terms);
+                trace!("Going down to {:?} - pushed {:?}",
+                self.current_node.value().name, 
+                self.matched_terms_stack.last().unwrap());
             } else if let Some(next) = self.current_node.next_sibling() {
                 self.current_node = next;
-                trace!("Going right");
+                trace!("Going right to {:?}",
+                self.current_node.value().name);
             } else if let Some(mut parent) = self.current_node.parent() {
                 self.matched_terms_stack.pop().unwrap();
-                trace!("Going up and right pop {:?}", self.new_matched_terms);
+                trace!("Pop {:?}", self.matched_terms_stack.last().unwrap());
                 while let None = parent.next_sibling() {
                     parent = match parent.parent() {
                         Some(p) => {
                             self.matched_terms_stack.pop().unwrap();
-                            trace!("Going up and right pop {:?}", self.new_matched_terms);
+                            trace!("Pop {:?}", self.matched_terms_stack.last().unwrap());
                             p
                         }
                         None => return None,
@@ -106,19 +104,18 @@ impl<'a> Iterator for SearchResult<'a> {
                 }
                 // is safe to unwrap, as previous loop will either find parent with next sibling or return
                 self.current_node = parent.next_sibling().unwrap();
+                trace!("Going right after backtrack to {:?}",
+                self.current_node.value().name);
+
             } else {
                 unreachable!("Never should run after root")
             }
 
-            trace!(
-                "After step {:?} searching {:?} already found {:?}",
-                self.current_node.value(),
-                self.search_terms,
-                self.new_matched_terms
-            );
+            
             self.truncate_this_branch = false;
             if self.is_match() {
                 // we already got match - we did not need to dive deaper
+                trace!("returning match {:?}", self.current_node.value().name);
                 self.truncate_this_branch = true;
                 return Some(SearchItem(self.current_node));
             }
@@ -140,6 +137,8 @@ impl<'a> SearchResult<'a> {
                 res &= contains
             }
         });
+        trace!("Match  for terms {:?}, prev.matches {:?}, new matches {:?} res {:?}", 
+        self.search_terms, matched_terms, matched, res );
         if !res && !matched.is_empty() {
             let mut matched_terms = matched_terms.clone();
             matched.into_iter().for_each(|i| matched_terms.set(i, true));
@@ -185,7 +184,7 @@ impl DirTree {
             ) -> Result<(), io::Error> {
                 for e in fs::read_dir(path)? {
                     let e = e?;
-                    if let Ok(file_type) = e.file_type() {
+                    if let Ok(file_type) = get_real_file_type(&e, opts.follow_symlinks) {
                         if file_type.is_dir() {
                             let mut dir_node = node.append(e.file_name().to_string_lossy().into());
                             let p = e.path();
@@ -281,5 +280,19 @@ mod tests {
         assert_eq!(1, s.count());
         let s = c.search("chesterton modry");
         assert_eq!(1, s.count());
+    }
+
+    #[test]
+    fn test_search_symlinks() {
+        env_logger::init();
+        let opts = OptionsBuilder::default().follow_symlinks(true).build().unwrap();
+        let c = DirTree::new_with_options("test_data", opts).unwrap();
+        let s = c.search("doyle chesterton");
+        assert_eq!(1, s.count());
+
+        let c = DirTree::new("test_data").unwrap();
+        let s = c.search("doyle chesterton");
+        assert_eq!(0, s.count());
+        
     }
 }
