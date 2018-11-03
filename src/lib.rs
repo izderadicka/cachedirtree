@@ -209,7 +209,7 @@ pub struct SearchResult<'a> {
     current_node: DirRef<'a>,
     search_terms: Vec<String>,
     truncate_this_branch: bool,
-    matched_terms: BitVec,
+    new_matched_terms: Option<BitVec>,
     matched_terms_stack: Vec<BitVec>,
 }
 
@@ -217,8 +217,11 @@ impl<'a> Iterator for SearchResult<'a> {
     type Item = SearchItem<'a>;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            trace!("Before step {:?} searching {:?} already found {:?}",
-            self.current_node.value(), self.search_terms, self.matched_terms
+            trace!(
+                "Before step {:?} searching {:?} already found {:?}",
+                self.current_node.value(),
+                self.search_terms,
+                self.new_matched_terms
             );
             if let Some(next) = if self.truncate_this_branch {
                 None
@@ -226,22 +229,24 @@ impl<'a> Iterator for SearchResult<'a> {
                 self.current_node.first_child()
             } {
                 self.current_node = next;
-                self.matched_terms_stack.push(self.matched_terms.clone());
-                trace!("Going down - push {:?}", self.matched_terms);
+                match self.new_matched_terms.take() {
+                    Some(n) => self.matched_terms_stack.push(n),
+                    None => self
+                        .matched_terms_stack
+                        .push(self.matched_terms_stack.last().unwrap().clone()),
+                }
+                trace!("Going down - push {:?}", self.new_matched_terms);
             } else if let Some(next) = self.current_node.next_sibling() {
                 self.current_node = next;
-                self.matched_terms = self.matched_terms_stack.last().unwrap().clone();
                 trace!("Going right");
             } else if let Some(mut parent) = self.current_node.parent() {
-                self.matched_terms = self.matched_terms_stack.pop().unwrap();
-                self.matched_terms = self.matched_terms_stack.last().unwrap().clone();
-                trace!("Going up and right pop {:?}", self.matched_terms );
+                self.matched_terms_stack.pop().unwrap();
+                trace!("Going up and right pop {:?}", self.new_matched_terms);
                 while let None = parent.next_sibling() {
                     parent = match parent.parent() {
                         Some(p) => {
-                            self.matched_terms = self.matched_terms_stack.pop().unwrap();
-                            self.matched_terms = self.matched_terms_stack.last().unwrap().clone();
-                            trace!("Going up and right pop {:?}", self.matched_terms );
+                            self.matched_terms_stack.pop().unwrap();
+                            trace!("Going up and right pop {:?}", self.new_matched_terms);
                             p
                         }
                         None => return None,
@@ -253,8 +258,11 @@ impl<'a> Iterator for SearchResult<'a> {
                 unreachable!("Never should run after root")
             }
 
-            trace!("After step {:?} searching {:?} already found {:?}",
-            self.current_node.value(), self.search_terms, self.matched_terms
+            trace!(
+                "After step {:?} searching {:?} already found {:?}",
+                self.current_node.value(),
+                self.search_terms,
+                self.new_matched_terms
             );
             self.truncate_this_branch = false;
             if self.is_match() {
@@ -270,8 +278,9 @@ impl<'a> SearchResult<'a> {
     fn is_match(&mut self) -> bool {
         let mut matched = vec![];
         let mut res = true;
+        let matched_terms = self.matched_terms_stack.last().unwrap();
         self.search_terms.iter().enumerate().for_each(|(i, term)| {
-            if !self.matched_terms[i] {
+            if !matched_terms[i] {
                 let contains = self.current_node.value().search_tag.contains(term);
                 if contains {
                     matched.push(i)
@@ -279,9 +288,11 @@ impl<'a> SearchResult<'a> {
                 res &= contains
             }
         });
-        matched
-            .into_iter()
-            .for_each(|i| self.matched_terms.set(i, true));
+        if !res && !matched.is_empty() {
+            let mut matched_terms = matched_terms.clone();
+            matched.into_iter().for_each(|i| matched_terms.set(i, true));
+            self.new_matched_terms = Some(matched_terms);
+        }
         res
     }
 }
@@ -353,7 +364,7 @@ impl DirTree {
             .collect::<Vec<_>>();
         let m = BitVec::from_elem(search_terms.len(), false);
         SearchResult {
-            matched_terms: m.clone(),
+            new_matched_terms: None,
             matched_terms_stack: vec![m],
             current_node: self.tree.root(),
             search_terms,
@@ -392,8 +403,6 @@ mod tests {
         let s = c.search("target build");
         assert_eq!(2, count_matches(s));
 
-        
-
         let s = c.search("cargo");
         assert_eq!(4, count_matches(s));
         let options = OptionsBuilder::default()
@@ -420,7 +429,6 @@ mod tests {
         let s = c.search("chesterton modry");
         assert_eq!(1, s.count());
     }
-
 
     #[test]
     fn test_cache() {
