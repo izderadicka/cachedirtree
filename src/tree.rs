@@ -82,9 +82,10 @@ impl<'a> Iterator for SearchResult<'a> {
                 self.current_node = next;
                 match self.new_matched_terms.take() {
                     Some(n) => self.matched_terms_stack.push(n),
-                    None => self
-                        .matched_terms_stack
-                        .push(self.matched_terms_stack.last().unwrap().clone()),
+                    None => {
+                        let c = self.matched_terms_stack.last().unwrap().clone();
+                        self.matched_terms_stack.push(c)
+                        },
                 }
                 trace!("Going down to {:?} - pushed {:?}",
                 self.current_node.value().name, 
