@@ -84,7 +84,11 @@ impl<'a> Iterator for SearchResult<'a> {
                     None => {
                         let c = self.matched_terms_stack.last().unwrap().clone();
                         self.matched_terms_stack.push(c)
+<<<<<<< HEAD
                     }
+=======
+                        },
+>>>>>>> 89bd4c97fe2b9004b9075018509adc2da2cd2153
                 }
                 trace!(
                     "Going down to {:?} - pushed {:?}",
