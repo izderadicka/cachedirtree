@@ -295,13 +295,17 @@ mod tests {
     #[test]
     fn test_search_symlinks() {
         env_logger::init();
+        #[cfg(not(feature="symlinks"))]
+        const NUM:usize = 0;
+        #[cfg(feature="symlinks")]
+        const NUM:usize = 1;
         let opts = OptionsBuilder::default()
             .follow_symlinks(true)
             .build()
             .unwrap();
         let c = DirTree::new_with_options("test_data", opts).unwrap();
         let s = c.search("doyle chesterton");
-        assert_eq!(1, s.count());
+        assert_eq!(NUM, s.count());
 
         let c = DirTree::new("test_data").unwrap();
         let s = c.search("doyle chesterton");
