@@ -1,3 +1,5 @@
+use super::utils::get_real_file_type;
+use super::Options;
 use bit_vec::BitVec;
 use ego_tree::iter::Descendants;
 use ego_tree::{NodeMut, NodeRef, Tree};
@@ -5,9 +7,6 @@ use std::fs;
 use std::io;
 use std::iter::{FromIterator, IntoIterator, Iterator, Skip};
 use std::path::{Path, PathBuf};
-use super::{Options};
-use super::utils::get_real_file_type;
-
 
 pub struct DirTree {
     tree: Tree<DirEntry>,
@@ -82,17 +81,19 @@ impl<'a> Iterator for SearchResult<'a> {
                 self.current_node = next;
                 match self.new_matched_terms.take() {
                     Some(n) => self.matched_terms_stack.push(n),
-                    None => self
-                        .matched_terms_stack
-                        .push(self.matched_terms_stack.last().unwrap().clone()),
+                    None => {
+                        let c = self.matched_terms_stack.last().unwrap().clone();
+                        self.matched_terms_stack.push(c)
+                    }
                 }
-                trace!("Going down to {:?} - pushed {:?}",
-                self.current_node.value().name, 
-                self.matched_terms_stack.last().unwrap());
+                trace!(
+                    "Going down to {:?} - pushed {:?}",
+                    self.current_node.value().name,
+                    self.matched_terms_stack.last().unwrap()
+                );
             } else if let Some(next) = self.current_node.next_sibling() {
                 self.current_node = next;
-                trace!("Going right to {:?}",
-                self.current_node.value().name);
+                trace!("Going right to {:?}", self.current_node.value().name);
             } else if let Some(mut parent) = self.current_node.parent() {
                 self.matched_terms_stack.pop().unwrap();
                 trace!("Pop {:?}", self.matched_terms_stack.last().unwrap());
@@ -108,14 +109,14 @@ impl<'a> Iterator for SearchResult<'a> {
                 }
                 // is safe to unwrap, as previous loop will either find parent with next sibling or return
                 self.current_node = parent.next_sibling().unwrap();
-                trace!("Going right after backtrack to {:?}",
-                self.current_node.value().name);
-
+                trace!(
+                    "Going right after backtrack to {:?}",
+                    self.current_node.value().name
+                );
             } else {
                 unreachable!("Never should run after root")
             }
 
-            
             self.truncate_this_branch = false;
             if self.is_match() {
                 // we already got match - we did not need to dive deaper
@@ -141,8 +142,13 @@ impl<'a> SearchResult<'a> {
                 res &= contains
             }
         });
-        trace!("Match  for terms {:?}, prev.matches {:?}, new matches {:?} res {:?}", 
-        self.search_terms, matched_terms, matched, res );
+        trace!(
+            "Match  for terms {:?}, prev.matches {:?}, new matches {:?} res {:?}",
+            self.search_terms,
+            matched_terms,
+            matched,
+            res
+        );
         if !res && !matched.is_empty() {
             let mut matched_terms = matched_terms.clone();
             matched.into_iter().for_each(|i| matched_terms.set(i, true));
@@ -230,8 +236,8 @@ impl DirTree {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::OptionsBuilder;
+    use super::*;
     #[test]
     fn test_creation() {
         let c = DirTree::new("test_data").unwrap();
@@ -289,7 +295,10 @@ mod tests {
     #[test]
     fn test_search_symlinks() {
         env_logger::init();
-        let opts = OptionsBuilder::default().follow_symlinks(true).build().unwrap();
+        let opts = OptionsBuilder::default()
+            .follow_symlinks(true)
+            .build()
+            .unwrap();
         let c = DirTree::new_with_options("test_data", opts).unwrap();
         let s = c.search("doyle chesterton");
         assert_eq!(1, s.count());
@@ -297,6 +306,5 @@ mod tests {
         let c = DirTree::new("test_data").unwrap();
         let s = c.search("doyle chesterton");
         assert_eq!(0, s.count());
-        
     }
 }
