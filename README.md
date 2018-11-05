@@ -1,3 +1,5 @@
+# cachedirtree
+
 A library to cache directory structure into memory (arena based tree structure) to enable
 fast searches over directory structure.
 
@@ -7,7 +9,8 @@ Also can monitor directory and updated cache after something changes in director
 Work in progress - use at your own risk - no documentation yet.
 
 See examples/watch_dir for sample usage:
-```
+
+```shell
 cargo run --release --example watch_dir -- test_data &
 echo doyle modry | nc localhost 54321
 mkdir -p test_data/my/fresh/new

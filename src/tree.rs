@@ -153,6 +153,8 @@ impl<'a> SearchResult<'a> {
             let mut matched_terms = matched_terms.clone();
             matched.into_iter().for_each(|i| matched_terms.set(i, true));
             self.new_matched_terms = Some(matched_terms);
+        } else {
+            self.new_matched_terms  = None;
         }
         res
     }
@@ -292,6 +294,7 @@ mod tests {
         assert_eq!(1, s.count());
     }
 
+    
     #[test]
     fn test_search_symlinks() {
         env_logger::init();
