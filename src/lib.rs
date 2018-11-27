@@ -25,6 +25,8 @@ mod tree;
 pub struct Options {
     include_files: bool,
     watch_changes: bool,
+    watch_recursively: bool,
+    watch_delay: u64,
     follow_symlinks: bool
 }
 
@@ -33,6 +35,8 @@ impl Default for Options {
         Options {
             include_files: true,
             watch_changes: false,
+            watch_recursively: true,
+            watch_delay: 10,
             follow_symlinks: false
         }
     }
@@ -64,8 +68,14 @@ impl DirCache {
             let _watcher = thread::spawn(move || match dc.load() {
                 Ok(_) => {
                     let (tx, rx) = channel();
-                    let mut watcher = watcher(tx, Duration::from_secs(10)).unwrap();
-                    watcher.watch(root, RecursiveMode::Recursive).unwrap();
+                    let mut watcher = watcher(tx, 
+                    Duration::from_secs(options.watch_delay)).unwrap();
+                    watcher.watch(root, 
+                    if options.watch_recursively {
+                        RecursiveMode::Recursive}
+                    else {
+                        RecursiveMode::NonRecursive
+                    }).unwrap();
 
                     loop {
                         match rx.recv() {
