@@ -223,6 +223,7 @@ impl DirTree {
 
             fn add_entries<P: AsRef<Path>>(
                 node: &mut NodeMut<DirEntry>,
+                root_dir: &Path,
                 path: P,
                 opts: &Options,
                 mut recents: Option<&mut BinaryHeap<DirEntryTimed>>
@@ -240,15 +241,15 @@ impl DirTree {
                                         if r.len() >= opts.recent_list_size {
                                             r.pop();
                                         }
-                                        r.push(DirEntryTimed { path: p.clone(), created:changed })
+                                        r.push(DirEntryTimed { path: p.strip_prefix(root_dir).unwrap().to_owned(), created:changed })
                                     }
                                     }
-                                    add_entries(&mut dir_node, &p, opts, Some(r))?;
+                                    add_entries(&mut dir_node, root_dir, &p, opts, Some(r))?;
                                     recents = Some(r);
 
                                 }
                                 None => {
-                                    add_entries(&mut dir_node, &p, opts, None)?;
+                                    add_entries(&mut dir_node, root_dir, &p, opts, None)?;
                                 }
                             }
                             
@@ -260,7 +261,7 @@ impl DirTree {
                 Ok(())
             }
 
-            add_entries(&mut root, p, &opts, recents.as_mut())?;
+            add_entries(&mut root, p, p, &opts, recents.as_mut())?;
         }
 
         Ok(DirTree { tree: cached, recent: recents.map(|h| h.into_sorted_vec()) })
