@@ -7,9 +7,12 @@ use std::fs;
 use std::io;
 use std::iter::{FromIterator, IntoIterator, Iterator, Skip};
 use std::path::{Path, PathBuf};
+use std::collections::BinaryHeap;
+use std::time::SystemTime;
 
 pub struct DirTree {
     tree: Tree<DirEntry>,
+    recent: Option<Vec<DirEntryTimed>>
 }
 
 #[derive(Debug)]
@@ -31,6 +34,29 @@ impl DirEntry {
 impl<T: ToString> From<T> for DirEntry {
     fn from(s: T) -> Self {
         DirEntry::new(s)
+    }
+}
+
+#[derive(PartialEq, Eq)]
+struct DirEntryTimed {
+    path: PathBuf,
+    created: SystemTime,
+}
+
+// need reverse ordering for heap, oldest will be on top
+use std::cmp::Ordering;
+impl PartialOrd for DirEntryTimed {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(match self.created.cmp(&other.created) {
+            Ordering::Greater => Ordering::Less,
+            Ordering::Less => Ordering::Greater,
+            Ordering::Equal => self.path.cmp(&other.path),
+        })
+    }
+}
+impl Ord for DirEntryTimed {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(&other).unwrap()
     }
 }
 
@@ -186,6 +212,12 @@ impl DirTree {
             ));
         }
         let mut cached = Tree::new(DirEntry::new(root_name));
+        let mut recents = if opts.recent_list_size>0 {
+            Some(BinaryHeap::with_capacity(opts.recent_list_size))
+        } else {
+            None
+        };
+
         {
             let mut root = cached.root_mut();
 
@@ -193,6 +225,7 @@ impl DirTree {
                 node: &mut NodeMut<DirEntry>,
                 path: P,
                 opts: &Options,
+                mut recents: Option<&mut BinaryHeap<DirEntryTimed>>
             ) -> Result<(), io::Error> {
                 for e in fs::read_dir(path)? {
                     let e = e?;
@@ -200,7 +233,25 @@ impl DirTree {
                         if file_type.is_dir() {
                             let mut dir_node = node.append(e.file_name().to_string_lossy().into());
                             let p = e.path();
-                            add_entries(&mut dir_node, &p, opts)?
+                            match recents.take() {
+                                Some(r) => {
+                                    if let Ok(meta) = p.metadata() {
+                                    if let Ok(changed) = meta.modified() {
+                                        if r.len() >= opts.recent_list_size {
+                                            r.pop();
+                                        }
+                                        r.push(DirEntryTimed { path: p.clone(), created:changed })
+                                    }
+                                    }
+                                    add_entries(&mut dir_node, &p, opts, Some(r))?;
+                                    recents = Some(r);
+
+                                }
+                                None => {
+                                    add_entries(&mut dir_node, &p, opts, None)?;
+                                }
+                            }
+                            
                         } else if opts.include_files && file_type.is_file() {
                             node.append(e.file_name().to_string_lossy().into());
                         }
@@ -209,10 +260,10 @@ impl DirTree {
                 Ok(())
             }
 
-            add_entries(&mut root, p, &opts)?;
+            add_entries(&mut root, p, &opts, recents.as_mut())?;
         }
 
-        Ok(DirTree { tree: cached })
+        Ok(DirTree { tree: cached, recent: recents.map(|h| h.into_sorted_vec()) })
     }
 
     pub fn iter(&self) -> Skip<Descendants<DirEntry>> {
@@ -233,6 +284,10 @@ impl DirTree {
             search_terms,
             truncate_this_branch: false,
         }
+    }
+
+    pub fn recent(&self) -> Option<impl Iterator<Item=&Path>> {
+        self.recent.as_ref().map(|v| v.iter().map(|e| e.path.as_ref()))
     }
 }
 
@@ -292,6 +347,19 @@ mod tests {
         assert_eq!(1, s.count());
         let s = c.search("chesterton modry");
         assert_eq!(1, s.count());
+    }
+
+    #[test]
+    fn test_recent() {
+        let options = OptionsBuilder::default()
+            .recent_list_size(64)
+            .build()
+            .unwrap();
+        let c = DirTree::new_with_options("test_data", options).unwrap();
+        let recents: Vec<_> = c.recent().unwrap().collect();
+        println!("Recents {:?}", recents);
+        assert_eq!(9, recents.len());
+        
     }
 
     

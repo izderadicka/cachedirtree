@@ -27,7 +27,8 @@ pub struct Options {
     watch_changes: bool,
     watch_recursively: bool,
     watch_delay: u64,
-    follow_symlinks: bool
+    follow_symlinks: bool,
+    recent_list_size: usize
 }
 
 impl Default for Options {
@@ -37,7 +38,8 @@ impl Default for Options {
             watch_changes: false,
             watch_recursively: true,
             watch_delay: 10,
-            follow_symlinks: false
+            follow_symlinks: false,
+            recent_list_size: 0
         }
     }
 }
@@ -130,6 +132,10 @@ impl DirCache {
         self.inner.search_collected(query, collector)
     }
 
+    pub fn recent(&self) -> Result<Vec<PathBuf>, io::Error> {
+        self.inner.recent()
+    }
+
     pub fn wait_ready(&self) {
         self.inner.wait_ready()
     }
@@ -203,6 +209,18 @@ impl DirCacheInner {
             )
         )
 
+    }
+
+    fn recent(&self) -> Result<Vec<PathBuf>, io::Error> {
+        let cache = self.cache.read().unwrap();
+        if cache.is_none() {
+            return Err(io::Error::new(io::ErrorKind::Other, "cache not ready"));
+        }
+        let recent = cache.as_ref().unwrap().recent();
+        match recent {
+            Some(iter) => Ok(iter.map(|p| p.to_owned()).collect()), 
+            None => Err(io::Error::new(io::ErrorKind::Other, "recent not supported"))
+        }
     }
 }
 
