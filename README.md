@@ -1,6 +1,6 @@
 # cachedirtree
 
-** moved to audioserve repo **
+**moved to audioserve repo**
 
 A library to cache directory structure into memory (arena based tree structure) to enable
 fast searches over directory structure.
